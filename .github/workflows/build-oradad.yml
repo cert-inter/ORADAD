@@ -1,0 +1,57 @@
+name: Build ORADAD
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MLA_VERSION: "1.4.0"
+  BUILD_CONFIGURATION: Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - platform: x64
+            mla_arch: x86_64
+            out_dir: x64\Release
+          - platform: Win32
+            mla_arch: i686
+            out_dir: Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Download MLA library
+        shell: pwsh
+        run: |
+          $zip = "libmla-windows-${{ matrix.mla_arch }}-$env:MLA_VERSION.zip"
+          Invoke-WebRequest -Uri "https://github.com/ANSSI-FR/MLA/releases/download/mla-$env:MLA_VERSION/$zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath ".\mla\libmla-windows-${{ matrix.mla_arch }}"
+          Get-ChildItem -Recurse .\mla
+
+      - name: Build
+        run: msbuild ORADAD.sln /m /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:Platform=${{ matrix.platform }}
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "${{ matrix.out_dir }}\ORADAD.exe" dist\
+          Copy-Item config-oradad.xml dist\
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ORADAD-${{ matrix.platform }}
+          path: dist\
